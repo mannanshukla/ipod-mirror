@@ -1,11 +1,12 @@
 # iPod Mirror
 
-A native macOS USB viewer for a jailbroken iPod running Veency, with Liquid Glass controls and the original website iPod image as its icon. This is an early prototype, not Apple's iPhone Mirroring service.
+A native macOS USB viewer for a jailbroken iPod running Veency, with a minimal frame, a slim glass control bar, and the original website iPod image as its icon. This is an early prototype, not Apple's iPhone Mirroring service.
 
 ## Run
 
 Open `build/iPod Mirror.app`. Plug in the iPod, enable Veency in its Settings, unlock the screen, open Connection settings and select its USB identifier, and click Connect. Accept Veency's access request on the iPod if shown. If Veency has a password, enter it in the Mac app. The password is kept in memory only.
 
+- The compact glass bar keeps Home, Lock, Screenshot, Audio, and Settings within reach. Connection settings is also available with Command-comma.
 - Click to tap; drag to swipe.
 - Click the screen, then type. Return, Backspace, Tab, Escape and arrow keys are supported. Unicode text depends on the device's Veency build; IME composition is not implemented.
 - Home (Command-1) and Lock (Command-L) use Veency's documented mouse button mappings.
@@ -16,7 +17,7 @@ The USB device picker currently shows the last eight characters of each device i
 
 ## Build and test
 
-Requires macOS 13+ and Apple's Command Line Tools. The build targets Apple Silicon. Liquid Glass requires macOS 26 or later; earlier systems use a native translucent material. No Xcode project, Homebrew dependencies, iproxy process, or network service is needed.
+Requires macOS 13+ and Apple's Command Line Tools. The build targets Apple Silicon. The screen-first frame works on macOS 13 and later. The slim control bar uses system Liquid Glass on macOS 26+, with a native translucent fallback on earlier systems. No Xcode project, Homebrew dependencies, iproxy process, or network service is needed.
 
 ```sh
 ./build.sh

@@ -79,57 +79,53 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var scanning=false
     var wantsReconnect=false
     let optionsPopover=NSPopover()
+    let settingsButton=NSButton(title:"Connection settings",target:nil,action:nil)
+    @objc func openSettings() {showOptions(settingsButton)}
     func applicationDidFinishLaunching(_ note:Notification) {
         NSApp.setActivationPolicy(.regular)
         let menu=NSMenu(),appMenu=NSMenu(),item=NSMenuItem();menu.addItem(item);item.submenu=appMenu
         appMenu.addItem(withTitle:"About iPod Mirror",action:#selector(NSApplication.orderFrontStandardAboutPanel(_:)),keyEquivalent:"")
         appMenu.addItem(.separator());appMenu.addItem(withTitle:"Quit iPod Mirror",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q")
         let control=NSMenu(),controlItem=NSMenuItem(title:"iPod",action:nil,keyEquivalent:"");menu.addItem(controlItem);controlItem.submenu=control
-        for (title,action,key) in [("Home",#selector(goHome),"1"),("Lock",#selector(goLock),"l"),("Save Screenshot…",#selector(saveScreenshot),"s")] {
+        for (title,action,key) in [("Home",#selector(goHome),"1"),("Lock",#selector(goLock),"l"),("Save Screenshot…",#selector(saveScreenshot),"s"),("Connection Settings…",#selector(openSettings),",")] {
             let item=control.addItem(withTitle:title,action:action,keyEquivalent:key);item.target=self
         }
         NSApp.mainMenu=menu
-        window=NSWindow(contentRect:NSRect(x:0,y:0,width:420,height:792),styleMask:[.titled,.closable,.miniaturizable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
+        window=NSWindow(contentRect:NSRect(x:0,y:0,width:336,height:528),styleMask:[.titled,.closable,.miniaturizable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
         window.title="iPod Mirror";window.titleVisibility = .hidden;window.titlebarAppearsTransparent=true
-        window.minSize=NSSize(width:350,height:660);window.contentAspectRatio=NSSize(width:420,height:792)
+        window.minSize=NSSize(width:280,height:444);window.collectionBehavior = .fullScreenNone
         window.delegate=self;window.isReleasedWhenClosed=false;window.isOpaque=false;window.backgroundColor = .clear
-        let root=NSVisualEffectView();root.material = .underWindowBackground;root.blendingMode = .behindWindow;root.state = .active
+        window.hasShadow=true
+        let root=NSView();root.wantsLayer=true;root.layer?.backgroundColor=NSColor(calibratedWhite:0.07,alpha:1).cgColor
+        root.layer?.cornerRadius=20;root.layer?.borderWidth=1;root.layer?.borderColor=NSColor(calibratedWhite:0.5,alpha:0.55).cgColor;root.layer?.masksToBounds=true
         window.contentView=root
-        let title=NSTextField(labelWithString:"iPod Mirror");title.font = .systemFont(ofSize:14,weight:.semibold)
-        subtitle.textColor = .secondaryLabelColor;subtitle.font = .systemFont(ofSize:10);subtitle.maximumNumberOfLines=1;subtitle.lineBreakMode = .byTruncatingTail
+        let barContent=NSView()
+        let glassBar=glass(barContent,radius:18,inset:0)
+        glassBar.translatesAutoresizingMaskIntoConstraints=false;root.addSubview(glassBar)
+        NSLayoutConstraint.activate([glassBar.leadingAnchor.constraint(equalTo:root.leadingAnchor),glassBar.trailingAnchor.constraint(equalTo:root.trailingAnchor),glassBar.topAnchor.constraint(equalTo:root.topAnchor),glassBar.heightAnchor.constraint(equalToConstant:32)])
+        subtitle.textColor = .secondaryLabelColor;subtitle.font = .systemFont(ofSize:11)
         subtitle.stringValue="Your iPod, right here."
-        let titles=NSStackView(views:[title,subtitle]);titles.orientation = .vertical;titles.alignment = .leading;titles.spacing=2
-        let settings=NSButton(title:"Connection settings",target:self,action:#selector(showOptions));symbolButton(settings,name:"slider.horizontal.3",label:"Connection settings")
-        connectButton.target=self;connectButton.action=#selector(toggleConnection);connectButton.bezelStyle = .rounded;connectButton.controlSize = .small
-        connectButton.setContentHuggingPriority(.required,for:.horizontal)
-        let header=NSView()
-        titles.translatesAutoresizingMaskIntoConstraints=false
-        header.addSubview(titles);header.addSubview(settings)
-        NSLayoutConstraint.activate([titles.leadingAnchor.constraint(equalTo:header.leadingAnchor),titles.centerYAnchor.constraint(equalTo:header.centerYAnchor),titles.trailingAnchor.constraint(lessThanOrEqualTo:settings.leadingAnchor,constant:-8),settings.trailingAnchor.constraint(equalTo:header.trailingAnchor),settings.centerYAnchor.constraint(equalTo:header.centerYAnchor),header.heightAnchor.constraint(equalToConstant:34)])
-        titles.setContentHuggingPriority(.defaultLow,for:.horizontal)
-        let headerGlass=glass(header,radius:20,inset:9)
-        header.widthAnchor.constraint(equalTo:headerGlass.widthAnchor,constant:-18).isActive=true
+        let settings=settingsButton;settings.target=self;settings.action=#selector(showOptions)
+        symbolButton(settings,name:"slider.horizontal.3",label:"Connection settings · ⌘,")
+        connectButton.target=self;connectButton.action=#selector(toggleConnection);connectButton.bezelStyle = .rounded
         home.target=self;home.action=#selector(goHome);lockButton.target=self;lockButton.action=#selector(goLock);screenshotButton.target=self;screenshotButton.action=#selector(saveScreenshot)
-        symbolButton(home,name:"house",label:"Home · ⌘1");symbolButton(lockButton,name:"lock",label:"Lock iPod · ⌘L");symbolButton(screenshotButton,name:"camera",label:"Save screenshot · ⌘S")
+        symbolButton(home,name:"app",label:"Home · ⌘1");symbolButton(lockButton,name:"lock",label:"Lock iPod · ⌘L");symbolButton(screenshotButton,name:"camera",label:"Save screenshot · ⌘S")
         audioButton.setButtonType(.toggle);audioButton.target=self;audioButton.action=#selector(toggleAudio)
         symbolButton(audioButton,name:"speaker.wave.2",label:"Play iPod audio on Mac")
-        let toolbar=NSStackView(views:[home,lockButton,screenshotButton,audioButton]);toolbar.orientation = .horizontal;toolbar.spacing=10
-        let toolbarGlass=glass(toolbar,radius:25,inset:7)
+        let toolbar=NSStackView(views:[home,lockButton,screenshotButton,audioButton,settings]);toolbar.orientation = .horizontal;toolbar.spacing=2
         for button in [home,lockButton,screenshotButton,audioButton] {button.isEnabled=false}
-        status.font = .systemFont(ofSize:10);status.textColor = .secondaryLabelColor;status.alignment = .center;status.maximumNumberOfLines=2
-        screen.wantsLayer=true;screen.layer?.cornerRadius=18;screen.layer?.masksToBounds=true
-        let icon=NSImageView(image:NSImage(named:NSImage.Name("AppIcon")) ?? NSImage(systemSymbolName:"ipodtouch",accessibilityDescription:"iPod") ?? NSImage());icon.imageScaling = .scaleProportionallyUpOrDown;icon.contentTintColor = .white
-        let heading=NSTextField(labelWithString:"Your iPod. On your Mac.");heading.font = .systemFont(ofSize:19,weight:.medium);heading.textColor = .white
-        let hint=NSTextField(wrappingLabelWithString:"Plug in. Unlock. Connect.\nChoose your iPod in connection settings.");hint.alignment = .center;hint.textColor = .lightGray;hint.font = .systemFont(ofSize:12)
+        status.font = .systemFont(ofSize:11);status.textColor = .secondaryLabelColor;status.maximumNumberOfLines=3
+        screen.wantsLayer=true;screen.layer?.cornerRadius=16;screen.layer?.masksToBounds=true
+        let icon=NSImageView(image:NSImage(named:NSImage.Name("AppIcon")) ?? NSImage());icon.imageScaling = .scaleProportionallyUpOrDown
+        let heading=NSTextField(labelWithString:"iPod Mirror");heading.font = .systemFont(ofSize:20,weight:.medium);heading.textColor = .white
+        let hint=NSTextField(wrappingLabelWithString:"Plug in your iPod, then open\nConnection settings to begin.");hint.alignment = .center;hint.textColor = .lightGray;hint.font = .systemFont(ofSize:12)
         empty.setViews([icon,heading,hint],in:.center);empty.orientation = .vertical;empty.spacing=14;empty.alignment = .centerX
-        for view in [headerGlass,screen,toolbarGlass,status] {view.translatesAutoresizingMaskIntoConstraints=false;root.addSubview(view)}
+        for view in [screen,toolbar] {view.translatesAutoresizingMaskIntoConstraints=false;root.addSubview(view)}
         empty.translatesAutoresizingMaskIntoConstraints=false;screen.addSubview(empty)
         NSLayoutConstraint.activate([
-            headerGlass.topAnchor.constraint(equalTo:root.topAnchor,constant:32),headerGlass.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:12),headerGlass.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-12),
-            screen.heightAnchor.constraint(equalTo:screen.widthAnchor,multiplier:1.5),screen.topAnchor.constraint(equalTo:headerGlass.bottomAnchor,constant:10),screen.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:12),screen.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-12),
-            toolbarGlass.topAnchor.constraint(equalTo:screen.bottomAnchor,constant:10),toolbarGlass.centerXAnchor.constraint(equalTo:root.centerXAnchor),
-            status.topAnchor.constraint(equalTo:toolbarGlass.bottomAnchor,constant:8),status.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:18),status.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-18),status.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-10),status.heightAnchor.constraint(equalToConstant:28),
-            empty.centerXAnchor.constraint(equalTo:screen.centerXAnchor),empty.centerYAnchor.constraint(equalTo:screen.centerYAnchor),icon.heightAnchor.constraint(equalToConstant:112),icon.widthAnchor.constraint(equalToConstant:112)
+            screen.topAnchor.constraint(equalTo:root.topAnchor,constant:32),screen.heightAnchor.constraint(equalTo:screen.widthAnchor,multiplier:1.5),screen.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:4),screen.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-4),screen.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-4),
+            toolbar.topAnchor.constraint(equalTo:root.topAnchor,constant:4),toolbar.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-9),toolbar.heightAnchor.constraint(equalToConstant:24),
+            empty.centerXAnchor.constraint(equalTo:screen.centerXAnchor),empty.centerYAnchor.constraint(equalTo:screen.centerYAnchor),icon.heightAnchor.constraint(equalToConstant:100),icon.widthAnchor.constraint(equalToConstant:100)
         ])
         password.placeholderString="Veency password (optional)";password.toolTip="Kept in memory only."
         devices.target=self;devices.action=#selector(selectionChanged)
@@ -137,7 +133,7 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         audioStatus.font = .systemFont(ofSize:11);audioStatus.textColor = .secondaryLabelColor
         let optionsTitle=NSTextField(labelWithString:"Connection");optionsTitle.font = .systemFont(ofSize:15,weight:.semibold)
         let note=NSTextField(wrappingLabelWithString:"Direct video is an experimental 320 × 480 stream. Veency provides the sharper image and handles input. Audio and direct video require the iPod helpers.");note.font = .systemFont(ofSize:11);note.textColor = .secondaryLabelColor
-        let options=NSStackView(views:[optionsTitle,devices,password,connectButton,fastButton,audioStatus,note]);options.orientation = .vertical;options.alignment = .leading;options.spacing=12;options.edgeInsets=NSEdgeInsets(top:18,left:18,bottom:18,right:18)
+        let options=NSStackView(views:[optionsTitle,subtitle,devices,password,connectButton,fastButton,audioStatus,status,note]);options.orientation = .vertical;options.alignment = .leading;options.spacing=12;options.edgeInsets=NSEdgeInsets(top:18,left:18,bottom:18,right:18)
         options.translatesAutoresizingMaskIntoConstraints=false
         let controller=NSViewController();controller.view=NSView();controller.view.addSubview(options)
         NSLayoutConstraint.activate([options.leadingAnchor.constraint(equalTo:controller.view.leadingAnchor),options.trailingAnchor.constraint(equalTo:controller.view.trailingAnchor),options.topAnchor.constraint(equalTo:controller.view.topAnchor),options.bottomAnchor.constraint(equalTo:controller.view.bottomAnchor),options.widthAnchor.constraint(equalToConstant:320),devices.widthAnchor.constraint(equalToConstant:284),password.widthAnchor.constraint(equalToConstant:284),note.widthAnchor.constraint(equalToConstant:284)])
@@ -148,7 +144,7 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.center();window.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
         scan();pollTimer=Timer.scheduledTimer(withTimeInterval:3,repeats:true) { [weak self] _ in self?.scan() }
     }
-    func windowWillResize(_ sender:NSWindow,to frameSize:NSSize) -> NSSize { NSSize(width:frameSize.width,height:(frameSize.width-24)*1.5+198) }
+    func windowWillResize(_ sender:NSWindow,to frameSize:NSSize) -> NSSize { NSSize(width:frameSize.width,height:(frameSize.width-8)*1.5+36) }
     @objc func showOptions(_ sender:NSButton) {optionsPopover.show(relativeTo:sender.bounds,of:sender,preferredEdge:.maxY)}
     func scan() {
         guard !scanning else{return};scanning=true

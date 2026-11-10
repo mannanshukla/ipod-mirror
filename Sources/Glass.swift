@@ -24,6 +24,6 @@ func symbolButton(_ button:NSButton, name:String, label:String) {
     button.imagePosition = .imageOnly;button.bezelStyle = .rounded;button.isBordered=false
     button.toolTip=label;button.setAccessibilityLabel(label)
     button.translatesAutoresizingMaskIntoConstraints=false
-    NSLayoutConstraint.activate([button.widthAnchor.constraint(equalToConstant:38),button.heightAnchor.constraint(equalToConstant:34)])
+    NSLayoutConstraint.activate([button.widthAnchor.constraint(equalToConstant:28),button.heightAnchor.constraint(equalToConstant:24)])
     button.contentTintColor = .labelColor
 }
