@@ -35,7 +35,7 @@ The app does not install or change anything on the iPod. It does not read app da
 
 ## Prototype limits
 
-- Live 640 × 960 screen, taps, Home, swipe-to-Spotlight, and Mac keyboard input verified on iPod touch 4 / iOS 5.1.1. Fresh reconnect testing is in progress; Veency can require another device-side approval.
+- Live 640 × 960 screen, taps, Home, swipe-to-Spotlight, and Mac keyboard input verified on iPod touch 4 / iOS 5.1.1. Disconnect and reconnect also verified after accepting Veency’s device-side access prompt. Automatic recovery after a physical cable unplug has not yet been tested.
 - Veency remains required. It may need the iPod awake and an access prompt accepted.
 - Raw screen updates favor compatibility over compression; actual frame rate depends on the iPod and Veency.
 - No audio, notification forwarding, clipboard sync, multitouch, or screen-off mirroring.
