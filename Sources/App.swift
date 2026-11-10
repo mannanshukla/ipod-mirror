@@ -89,9 +89,9 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let item=control.addItem(withTitle:title,action:action,keyEquivalent:key);item.target=self
         }
         NSApp.mainMenu=menu
-        window=NSWindow(contentRect:NSRect(x:0,y:0,width:420,height:790),styleMask:[.titled,.closable,.miniaturizable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
+        window=NSWindow(contentRect:NSRect(x:0,y:0,width:420,height:792),styleMask:[.titled,.closable,.miniaturizable,.resizable,.fullSizeContentView],backing:.buffered,defer:false)
         window.title="iPod Mirror";window.titleVisibility = .hidden;window.titlebarAppearsTransparent=true
-        window.minSize=NSSize(width:350,height:660);window.contentAspectRatio=NSSize(width:420,height:790)
+        window.minSize=NSSize(width:350,height:660);window.contentAspectRatio=NSSize(width:420,height:792)
         window.delegate=self;window.isReleasedWhenClosed=false;window.isOpaque=false;window.backgroundColor = .clear
         let root=NSVisualEffectView();root.material = .underWindowBackground;root.blendingMode = .behindWindow;root.state = .active
         window.contentView=root
@@ -102,7 +102,10 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let settings=NSButton(title:"Connection settings",target:self,action:#selector(showOptions));symbolButton(settings,name:"slider.horizontal.3",label:"Connection settings")
         connectButton.target=self;connectButton.action=#selector(toggleConnection);connectButton.bezelStyle = .rounded;connectButton.controlSize = .small
         connectButton.setContentHuggingPriority(.required,for:.horizontal)
-        let header=NSStackView(views:[titles,settings]);header.orientation = .horizontal;header.spacing=8
+        let header=NSView()
+        titles.translatesAutoresizingMaskIntoConstraints=false
+        header.addSubview(titles);header.addSubview(settings)
+        NSLayoutConstraint.activate([titles.leadingAnchor.constraint(equalTo:header.leadingAnchor),titles.centerYAnchor.constraint(equalTo:header.centerYAnchor),titles.trailingAnchor.constraint(lessThanOrEqualTo:settings.leadingAnchor,constant:-8),settings.trailingAnchor.constraint(equalTo:header.trailingAnchor),settings.centerYAnchor.constraint(equalTo:header.centerYAnchor),header.heightAnchor.constraint(equalToConstant:34)])
         titles.setContentHuggingPriority(.defaultLow,for:.horizontal)
         let headerGlass=glass(header,radius:20,inset:9)
         header.widthAnchor.constraint(equalTo:headerGlass.widthAnchor,constant:-18).isActive=true
@@ -123,7 +126,7 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         empty.translatesAutoresizingMaskIntoConstraints=false;screen.addSubview(empty)
         NSLayoutConstraint.activate([
             headerGlass.topAnchor.constraint(equalTo:root.topAnchor,constant:32),headerGlass.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:12),headerGlass.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-12),
-            screen.topAnchor.constraint(equalTo:headerGlass.bottomAnchor,constant:10),screen.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:12),screen.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-12),
+            screen.heightAnchor.constraint(equalTo:screen.widthAnchor,multiplier:1.5),screen.topAnchor.constraint(equalTo:headerGlass.bottomAnchor,constant:10),screen.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:12),screen.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-12),
             toolbarGlass.topAnchor.constraint(equalTo:screen.bottomAnchor,constant:10),toolbarGlass.centerXAnchor.constraint(equalTo:root.centerXAnchor),
             status.topAnchor.constraint(equalTo:toolbarGlass.bottomAnchor,constant:8),status.leadingAnchor.constraint(equalTo:root.leadingAnchor,constant:18),status.trailingAnchor.constraint(equalTo:root.trailingAnchor,constant:-18),status.bottomAnchor.constraint(equalTo:root.bottomAnchor,constant:-10),status.heightAnchor.constraint(equalToConstant:28),
             empty.centerXAnchor.constraint(equalTo:screen.centerXAnchor),empty.centerYAnchor.constraint(equalTo:screen.centerYAnchor),icon.heightAnchor.constraint(equalToConstant:112),icon.widthAnchor.constraint(equalToConstant:112)
@@ -145,6 +148,7 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.center();window.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
         scan();pollTimer=Timer.scheduledTimer(withTimeInterval:3,repeats:true) { [weak self] _ in self?.scan() }
     }
+    func windowWillResize(_ sender:NSWindow,to frameSize:NSSize) -> NSSize { NSSize(width:frameSize.width,height:(frameSize.width-24)*1.5+198) }
     @objc func showOptions(_ sender:NSButton) {optionsPopover.show(relativeTo:sender.bounds,of:sender,preferredEdge:.maxY)}
     func scan() {
         guard !scanning else{return};scanning=true

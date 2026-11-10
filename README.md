@@ -1,6 +1,6 @@
 # iPod Mirror
 
-A native macOS USB viewer for a jailbroken iPod running Veency, with Liquid Glass controls and a Snow Leopard inspired iPod icon. This is an early prototype, not Apple's iPhone Mirroring service.
+A native macOS USB viewer for a jailbroken iPod running Veency, with Liquid Glass controls and the original website iPod image as its icon. This is an early prototype, not Apple's iPhone Mirroring service.
 
 ## Run
 
