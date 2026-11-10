@@ -86,11 +86,11 @@ struct USBDevice {
             return USBDevice(id:id, serial:serial, product:p["ProductID"] as? Int ?? 0)
         }
     }
-    func connect() throws -> Wire {
+    func connect(portNumber: UInt16 = 5900) throws -> Wire {
         let wire = try Wire.mux()
-        let port = Int(UInt16(5900).bigEndian)
+        let port = Int(portNumber.bigEndian)
         let answer = try wire.muxRequest(["MessageType":"Connect", "DeviceID":id, "PortNumber":port])
-        guard answer["Number"] as? Int == 0 else { throw fail("Veency is not reachable on this device. Select your jailbroken iPod, enable Veency in Settings, and unlock it.") }
+        guard answer["Number"] as? Int == 0 else { throw fail(portNumber == 5900 ? "Veency is not reachable on this device. Select your jailbroken iPod, enable Veency in Settings, and unlock it." : "The iPod helper is not reachable on port \(portNumber).") }
         wire.deadline = Date().addingTimeInterval(90)
         return wire
     }
