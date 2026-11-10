@@ -102,9 +102,10 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let settings=NSButton(title:"Connection settings",target:self,action:#selector(showOptions));symbolButton(settings,name:"slider.horizontal.3",label:"Connection settings")
         connectButton.target=self;connectButton.action=#selector(toggleConnection);connectButton.bezelStyle = .rounded;connectButton.controlSize = .small
         connectButton.setContentHuggingPriority(.required,for:.horizontal)
-        let header=NSStackView(views:[titles,connectButton,settings]);header.orientation = .horizontal;header.spacing=8
+        let header=NSStackView(views:[titles,settings]);header.orientation = .horizontal;header.spacing=8
         titles.setContentHuggingPriority(.defaultLow,for:.horizontal)
         let headerGlass=glass(header,radius:20,inset:9)
+        header.widthAnchor.constraint(equalTo:headerGlass.widthAnchor,constant:-18).isActive=true
         home.target=self;home.action=#selector(goHome);lockButton.target=self;lockButton.action=#selector(goLock);screenshotButton.target=self;screenshotButton.action=#selector(saveScreenshot)
         symbolButton(home,name:"house",label:"Home · ⌘1");symbolButton(lockButton,name:"lock",label:"Lock iPod · ⌘L");symbolButton(screenshotButton,name:"camera",label:"Save screenshot · ⌘S")
         audioButton.setButtonType(.toggle);audioButton.target=self;audioButton.action=#selector(toggleAudio)
@@ -133,7 +134,7 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         audioStatus.font = .systemFont(ofSize:11);audioStatus.textColor = .secondaryLabelColor
         let optionsTitle=NSTextField(labelWithString:"Connection");optionsTitle.font = .systemFont(ofSize:15,weight:.semibold)
         let note=NSTextField(wrappingLabelWithString:"Direct video is an experimental 320 × 480 stream. Veency provides the sharper image and handles input. Audio and direct video require the iPod helpers.");note.font = .systemFont(ofSize:11);note.textColor = .secondaryLabelColor
-        let options=NSStackView(views:[optionsTitle,devices,password,fastButton,audioStatus,note]);options.orientation = .vertical;options.alignment = .leading;options.spacing=12;options.edgeInsets=NSEdgeInsets(top:18,left:18,bottom:18,right:18)
+        let options=NSStackView(views:[optionsTitle,devices,password,connectButton,fastButton,audioStatus,note]);options.orientation = .vertical;options.alignment = .leading;options.spacing=12;options.edgeInsets=NSEdgeInsets(top:18,left:18,bottom:18,right:18)
         options.translatesAutoresizingMaskIntoConstraints=false
         let controller=NSViewController();controller.view=NSView();controller.view.addSubview(options)
         NSLayoutConstraint.activate([options.leadingAnchor.constraint(equalTo:controller.view.leadingAnchor),options.trailingAnchor.constraint(equalTo:controller.view.trailingAnchor),options.topAnchor.constraint(equalTo:controller.view.topAnchor),options.bottomAnchor.constraint(equalTo:controller.view.bottomAnchor),options.widthAnchor.constraint(equalToConstant:320),devices.widthAnchor.constraint(equalToConstant:284),password.widthAnchor.constraint(equalToConstant:284),note.widthAnchor.constraint(equalToConstant:284)])
