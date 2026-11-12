@@ -52,7 +52,7 @@ static void *serve(void *unused){
  while(1){struct Packet packet;int available=0;
  pthread_mutex_lock(&mutex);if(head!=tail){packet=queue[tail];tail=(tail+1)%SLOTS;available=1;}pthread_mutex_unlock(&mutex);
  char probe;ssize_t alive=recv(fd,&probe,1,MSG_PEEK|MSG_DONTWAIT);if(alive==0 || (alive<0 && errno!=EAGAIN && errno!=EWOULDBLOCK && errno!=EINTR))break;
- if(!available){usleep(2000);continue;}
+ if(!available){usleep(5000);continue;}
  uint32_t header[4]={htonl(packet.rate),htonl(packet.channels),htonl(packet.frames),htonl(packet.frames*packet.channels*4)};
  if(sendall(fd,header,sizeof(header))||sendall(fd,packet.samples,packet.frames*packet.channels*4))break;
  }
