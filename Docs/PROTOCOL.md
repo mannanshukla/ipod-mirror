@@ -16,6 +16,18 @@ Client sends ASCII `FRAM`. Each response has five big-endian UInt32 values: magi
 
 Tested on iPod touch 4 / iOS 5.1.1: ~11–12 fps over USB in short 60-frame runs. This is not a comparative Veency benchmark or a guaranteed sustained rate. The image is lower resolution than Veency. Input still goes through Veency with coordinates scaled to its framebuffer. Portrait only; orientation handling and screen-off capture remain unfinished.
 
+## Multitouch: port 5904
+
+Served by `iPodMirrorTouch.dylib` inside SpringBoard. Client sends ASCII `IMT1`. Server replies with 12 bytes: `IMT1`, screen width and height in portrait pixels (UInt16 big-endian; 640 × 960 on iPod touch 4), maximum fingers (5), and three zero bytes.
+
+Each client frame is a 4-byte header, `T`, phase, finger count (1–5), zero, followed by one big-endian UInt16 x and y per finger in portrait screen pixels. Phases: 1 began, 2 moved, 3 ended, 4 cancelled. The server sends nothing after the handshake.
+
+A frame becomes one GraphicsServices hand event with one path per finger, as Veency does for its single touch. The window under the first finger at `began` receives every event of that gesture, even if the fingers move over another window. A `began` while fingers are down cancels the old gesture first. Moves and ends are ignored unless a gesture is open with the same finger count. Any malformed header closes the connection, including a nonzero reserved byte. Once a frame's first byte arrives, the rest must arrive within 2 seconds.
+
+No touch stays stuck. The server cancels held fingers when the connection closes, when no frame arrives for about 3 seconds while fingers are down, or when a frame stalls part-way. A new connection replaces the old one, which is closed and has its fingers cancelled. Only the newest accepted connection may begin or drive a gesture; frames an older connection had already read are dropped. Only the connection that began the gesture can move or end it, and injection is serialized. The window is hit-tested in screen pixels, as Veency does. While fingers are held still, the Mac repeats the current position once a second.
+
+The Mac connects at the start of the first two-finger gesture, not at session start, and waits five seconds after a failed connection before trying again. It sends nothing for a gesture whose `began` did not reach the iPod.
+
 ## Measurements
 
 The first screenshot+CoreGraphics scaling attempt reached 6.5 fps. Sampling native BGRA pixels directly improved the measured rate to 12.2 fps in that run. A later run measured 11.6 fps. Capture-only was ~30 ms/frame, excluding pixel extraction, scaling and transport.

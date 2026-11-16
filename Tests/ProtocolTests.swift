@@ -60,5 +60,20 @@ func hello(_ server:Wire, minor:Int, authenticated:Bool=false) throws {
         try hello(server,minor:8,authenticated:true);client.cancel();expect(done.wait(timeout:.now()+2) == .success,"auth session cancel");server.cancel()
         print("PASS VNC DES authentication fixture")
     }
+    do {
+        expect(touchFrame(.began,[(x:1,y:2),(x:700,y:-5)],width:640,height:960)==[84,1,2,0,0,1,0,2,2,127,0,0],"touch frame encodes and clamps")
+        expect(try parseTouchHello(Array("IMT1".utf8)+be16(640)+be16(960)+[5,0,0,0]) == (640,960,5),"touch hello")
+        var rejected=false;do {_ = try parseTouchHello(Array("IMT2".utf8)+be16(640)+be16(960)+[5,0,0,0])} catch {rejected=true};expect(rejected,"bad touch hello rejected")
+        let (client,server)=try pair(),channel=TouchChannel(connect:{client})
+        channel.send(.moved,[CGPoint(x:0.5,y:0.5),CGPoint(x:0.25,y:0.25)]) // No gesture open: must not connect or send.
+        channel.send(.began,[CGPoint(x:0.5,y:0.5),CGPoint(x:0.25,y:0.75)])
+        expect(try server.read(4)==Array("IMT1".utf8),"touch handshake");try server.send(Array("IMT1".utf8)+be16(640)+be16(960)+[5,0,0,0])
+        expect(try server.read(12)==[84,1,2,0]+be16(320)+be16(480)+be16(160)+be16(720),"began frame in helper pixels")
+        channel.send(.moved,[CGPoint(x:1,y:1),CGPoint(x:0,y:0)]);expect(try server.read(12)==[84,2,2,0]+be16(639)+be16(959)+be16(0)+be16(0),"moved frame clamps to the screen")
+        channel.send(.ended,[CGPoint(x:1,y:1),CGPoint(x:0,y:0)]);expect(try server.read(4)==[84,3,2,0],"ended frame");_ = try server.read(8)
+        channel.send(.moved,[CGPoint(x:0.5,y:0.5),CGPoint(x:0.5,y:0.5)]) // Gesture already ended: dropped.
+        channel.send(.began,[CGPoint(x:0,y:0),CGPoint(x:0,y:0)]);expect(try server.read(4)==[84,1,2,0],"stray move dropped; next frame is the new gesture");_ = try server.read(8)
+        channel.stop();server.cancel();print("PASS touch frames, handshake, gesture gating")
+    }
  }
 }

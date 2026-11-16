@@ -4,8 +4,27 @@ final class ScreenView: NSView {
     var frameImage: CGImage? { didSet { needsDisplay=true } }
     var onPointer: ((Int,Int,UInt8)->Void)?
     var onKey: ((UInt32,Bool)->Void)?
+    /// Two-finger input. Points are normalized to the screen image (0…1, origin top-left).
+    var onTouches: ((TouchPhase,[CGPoint])->Void)?
+    var multitouchEnabled=false { didSet { if !multitouchEnabled {cancelFingers()};needsDisplay=true } }
     private var dragging=false
+    // Trackpad two-finger scroll drives one finger from the pointer (swipe home screens, scroll lists). View coordinates.
+    private var scrollFinger:CGPoint?
+    private var scrollRejected=false // A scroll that started during another gesture stays ignored until it ends.
+    private var rightDown=false
+    // Two-finger state. ⌥-drag mirrors a second finger through the screen centre (pinch and rotate);
+    // ⌥⇧-drag moves both fingers together; trackpad pinch and rotate gestures drive two fingers around the pointer.
+    private enum Fingers { case mirrored, parallel(offset:CGPoint), trackpad(anchor:CGPoint) }
+    private var fingers:Fingers?
+    private var fingerPoints=[CGPoint]()
+    private var hover:CGPoint?
+    private var optionHeld=false
+    private var magnification:CGFloat=0,rotation:CGFloat=0,magnifying=false,rotating=false
+    private var tracking:NSTrackingArea?
+    // The touch helper cancels a held gesture after about 3 s of silence, so a still hold repeats its position each second.
+    private var keepalive:Timer?
     override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var isFlipped: Bool { true }
     var imageRect: NSRect {
         guard let image=frameImage else { return .zero }
@@ -18,21 +37,150 @@ final class ScreenView: NSView {
         guard let image=frameImage else { return }
         let ns=NSImage(cgImage:image,size:NSSize(width:image.width,height:image.height))
         ns.draw(in:imageRect,from:.zero,operation:.copy,fraction:1,respectFlipped:true,hints:[.interpolation:NSImageInterpolation.high])
+        // Show where the two fingers are (or would land) while ⌥ is held or a two-finger gesture runs.
+        var shown=fingerPoints
+        if shown.isEmpty,optionHeld,multitouchEnabled,let p=hover {shown=[p,mirror(p)]}
+        let r=imageRect
+        for p in shown {
+            let c=NSPoint(x:r.minX+p.x*r.width,y:r.minY+p.y*r.height),dot=NSBezierPath(ovalIn:NSRect(x:c.x-11,y:c.y-11,width:22,height:22))
+            NSColor(calibratedWhite:1,alpha:fingerPoints.isEmpty ? 0.25:0.45).setFill();dot.fill()
+            NSColor(calibratedWhite:0,alpha:0.35).setStroke();dot.lineWidth=1.5;dot.stroke()
+        }
     }
-    private func point(_ event:NSEvent,buttons:UInt8) {
-        guard let image=frameImage else { return }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t=tracking {removeTrackingArea(t)}
+        let t=NSTrackingArea(rect:.zero,options:[.mouseMoved,.mouseEnteredAndExited,.activeInKeyWindow,.inVisibleRect],owner:self,userInfo:nil)
+        addTrackingArea(t);tracking=t
+    }
+    private func normalized(_ event:NSEvent)->CGPoint? {
         let p=convert(event.locationInWindow,from:nil),r=imageRect
-        if buttons != 0 && !dragging && !r.contains(p) { return }
+        guard frameImage != nil,r.width>0,r.height>0 else {return nil}
+        return CGPoint(x:(p.x-r.minX)/r.width,y:(p.y-r.minY)/r.height)
+    }
+    private func clamp(_ p:CGPoint)->CGPoint {CGPoint(x:max(0,min(1,p.x)),y:max(0,min(1,p.y)))}
+    private func mirror(_ p:CGPoint)->CGPoint {clamp(CGPoint(x:1-p.x,y:1-p.y))}
+    private func moveFingers(_ phase:TouchPhase,_ points:[CGPoint]) {
+        let done=phase == .ended || phase == .cancelled
+        fingerPoints=done ? [] : points;needsDisplay=true
+        onTouches?(phase,points)
+        if done {keepalive?.invalidate();keepalive=nil}
+        else if keepalive == nil {
+            let timer=Timer(timeInterval:1,repeats:true) { [weak self] _ in guard let self=self,!self.fingerPoints.isEmpty else{return};self.onTouches?(.moved,self.fingerPoints) }
+            RunLoop.main.add(timer,forMode:.common);keepalive=timer // .common keeps it firing during mouse-drag tracking.
+        }
+    }
+    private func cancelFingers() {
+        if fingers != nil,!fingerPoints.isEmpty {onTouches?(.cancelled,fingerPoints)}
+        keepalive?.invalidate();keepalive=nil
+        fingers=nil;fingerPoints=[];magnifying=false;rotating=false;needsDisplay=true
+    }
+    override func flagsChanged(with e:NSEvent) {
+        optionHeld=e.modifierFlags.contains(.option);needsDisplay=true;super.flagsChanged(with:e)
+    }
+    override func mouseMoved(with e:NSEvent) {
+        optionHeld=e.modifierFlags.contains(.option)
+        hover=normalized(e).flatMap {imageRect.contains(convert(e.locationInWindow,from:nil)) ? $0:nil}
+        if optionHeld {needsDisplay=true}
+    }
+    override func mouseExited(with e:NSEvent) {
+        hover=nil;needsDisplay=true
+        // Scroll events go to whatever view is under the pointer, so the end of this one may never arrive here.
+        if let f=scrollFinger {scrollFinger=nil;point(f,buttons:0)}
+    }
+    // Trackpad pinch and rotate: two fingers around the pointer, 15% of the screen width apart at rest.
+    private func trackpadFingers()->[CGPoint]? {
+        guard case .trackpad(let a)? = fingers else {return nil}
+        let r=imageRect,aspect=r.height/max(r.width,1)
+        let radius=max(0.03,0.15*(1+magnification)),angle=rotation*CGFloat.pi/180
+        let dx=radius*cos(angle),dy=radius*sin(angle)/aspect
+        return [clamp(CGPoint(x:a.x-dx,y:a.y+dy)),clamp(CGPoint(x:a.x+dx,y:a.y-dy))]
+    }
+    private func trackpad(_ e:NSEvent,magnify:Bool) {
+        guard multitouchEnabled,!dragging,scrollFinger == nil else {return}
+        switch e.phase {
+        case .began:
+            if fingers == nil {
+                guard let p=normalized(e),imageRect.contains(convert(e.locationInWindow,from:nil)) else {return}
+                magnification=0;rotation=0;fingers = .trackpad(anchor:p)
+                if magnify {magnifying=true} else {rotating=true}
+                if let f=trackpadFingers() {moveFingers(.began,f)}
+            } else if case .trackpad = fingers {if magnify {magnifying=true} else {rotating=true}}
+        case .changed:
+            guard case .trackpad = fingers else {return}
+            if magnify {magnification+=e.magnification} else {rotation+=CGFloat(e.rotation)}
+            if let f=trackpadFingers() {moveFingers(.moved,f)}
+        case .ended,.cancelled:
+            guard case .trackpad = fingers else {return}
+            if magnify {magnifying=false} else {rotating=false}
+            if !magnifying && !rotating {let f=fingerPoints;fingers=nil;if !f.isEmpty {moveFingers(e.phase == .ended ? .ended:.cancelled,f)}}
+        default: break
+        }
+    }
+    override func magnify(with e:NSEvent) {trackpad(e,magnify:true)}
+    override func rotate(with e:NSEvent) {trackpad(e,magnify:false)}
+    private func point(_ event:NSEvent,buttons:UInt8) {
+        let p=convert(event.locationInWindow,from:nil)
+        if buttons != 0 && !dragging && !imageRect.contains(p) { return }
+        point(p,buttons:buttons)
+    }
+    private func point(_ p:NSPoint,buttons:UInt8) {
+        guard let image=frameImage else { return }
+        let r=imageRect
         let x=max(0,min(image.width-1,Int((p.x-r.minX)*CGFloat(image.width)/r.width)))
         let y=max(0,min(image.height-1,Int((p.y-r.minY)*CGFloat(image.height)/r.height)))
         onPointer?(x,y,buttons)
     }
-    override func mouseDown(with e:NSEvent) { window?.makeFirstResponder(self);guard imageRect.contains(convert(e.locationInWindow,from:nil)) else{return};dragging=true;point(e,buttons:1) }
-    override func mouseDragged(with e:NSEvent) { if dragging {point(e,buttons:1)} }
-    override func mouseUp(with e:NSEvent) { if dragging {point(e,buttons:0)};dragging=false }
-    override func rightMouseDown(with e:NSEvent) { point(e,buttons:4) }
-    override func rightMouseUp(with e:NSEvent) { point(e,buttons:0) }
-    func releaseInput() { dragging=false;onPointer?(0,0,0) }
+    override func mouseDown(with e:NSEvent) {
+        window?.makeFirstResponder(self);guard fingers == nil,scrollFinger == nil,imageRect.contains(convert(e.locationInWindow,from:nil)) else{return}
+        if multitouchEnabled,e.modifierFlags.contains(.option),let p=normalized(e) {
+            let second=mirror(p)
+            fingers=e.modifierFlags.contains(.shift) ? .parallel(offset:CGPoint(x:second.x-p.x,y:second.y-p.y)) : .mirrored
+            moveFingers(.began,[clamp(p),second]);return
+        }
+        dragging=true;point(e,buttons:1)
+    }
+    private func dragFingers(_ e:NSEvent)->[CGPoint]? {
+        guard let p=normalized(e).map(clamp) else {return nil}
+        switch fingers {
+        case .mirrored?: return [p,mirror(p)]
+        case .parallel(let o)?: return [p,clamp(CGPoint(x:p.x+o.x,y:p.y+o.y))]
+        default: return nil
+        }
+    }
+    override func mouseDragged(with e:NSEvent) {
+        if let f=dragFingers(e) {moveFingers(.moved,f);return}
+        if dragging {point(e,buttons:1)}
+    }
+    override func mouseUp(with e:NSEvent) {
+        if let f=dragFingers(e) {fingers=nil;moveFingers(.ended,f);return}
+        if dragging {point(e,buttons:0)};dragging=false
+    }
+    override func scrollWheel(with e:NSEvent) {
+        // Only trackpad and Magic Mouse touches; momentum after lift-off and clicky wheels are ignored.
+        guard e.hasPreciseScrollingDeltas,e.momentumPhase.isEmpty else {return}
+        let r=imageRect,ending=e.phase.contains(.ended) || e.phase.contains(.cancelled)
+        if e.phase.contains(.began) {scrollRejected=false}
+        // Start at .began, or mid-gesture when the pointer slid in from outside the view.
+        if scrollFinger == nil,!scrollRejected,!ending,e.phase.contains(.began) || e.phase.contains(.changed) {
+            let p=convert(e.locationInWindow,from:nil)
+            guard frameImage != nil,fingers == nil,!dragging,!rightDown,r.contains(p) else {if e.phase.contains(.began) {scrollRejected=true};return}
+            scrollFinger=p;point(p,buttons:1)
+        }
+        if ending {scrollRejected=false}
+        guard var f=scrollFinger else {return}
+        if e.phase.contains(.changed) || e.phase.contains(.began) {
+            // The finger follows the hand: with natural scrolling the deltas already point that way.
+            let sign:CGFloat=e.isDirectionInvertedFromDevice ? 1:-1
+            f.x=max(r.minX,min(r.maxX-1,f.x+sign*e.scrollingDeltaX));f.y=max(r.minY,min(r.maxY-1,f.y+sign*e.scrollingDeltaY))
+            scrollFinger=f;point(f,buttons:1)
+        }
+        if ending {scrollFinger=nil;point(f,buttons:0)}
+    }
+    // Right click is Veency's Home button; skip it while a finger is down so it can't break the touch.
+    override func rightMouseDown(with e:NSEvent) { guard !dragging,fingers == nil,scrollFinger == nil else{return};rightDown=true;point(e,buttons:4) }
+    override func rightMouseUp(with e:NSEvent) { guard rightDown else{return};rightDown=false;point(e,buttons:0) }
+    func releaseInput() { cancelFingers();dragging=false;scrollFinger=nil;scrollRejected=false;rightDown=false;onPointer?(0,0,0) }
     override func keyDown(with e:NSEvent) {
         if e.modifierFlags.contains(.command) { super.keyDown(with:e);return }
         let special:[UInt16:UInt32]=[36:0xff0d,48:0xff09,51:0xff08,53:0xff1b,123:0xff51,124:0xff53,125:0xff54,126:0xff52,117:0xffff]
@@ -62,6 +210,7 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var audioGeneration=UUID()
     let fastButton=NSButton(checkboxWithTitle:"Direct video · experimental",target:nil,action:nil)
     var directVideo:DirectVideo?
+    var touch:TouchChannel?
     var videoGeneration=UUID()
     var controlWidth=640,controlHeight=960
     let empty=NSStackView()
@@ -141,6 +290,7 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         selectedSerial=UserDefaults.standard.string(forKey:"SelectedUSBDevice")
         screen.onPointer={ [weak self] x,y,b in guard let self=self else{return};let px=self.directVideo == nil ? x : x*self.controlWidth/320;let py=self.directVideo == nil ? y : y*self.controlHeight/480;self.send { try $0.pointer(x:px,y:py,buttons:b) } }
         screen.onKey={ [weak self] code,down in self?.send {try $0.key(code,down:down)} }
+        screen.onTouches={ [weak self] phase,points in guard let self=self,self.state == .connected else{return};self.touch?.send(phase,points) }
         window.center();window.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
         scan();pollTimer=Timer.scheduledTimer(withTimeInterval:3,repeats:true) { [weak self] _ in self?.scan() }
     }
@@ -188,7 +338,7 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 DispatchQueue.main.async {
                     guard let self=self,self.generation==token else{return}
                     let retry=self.wantsReconnect
-                    self.stopAudio();self.stopVideo();self.connection=nil;self.pendingWire=nil;self.screen.releaseInput();self.setControls(false)
+                    self.stopAudio();self.stopVideo();self.stopTouch();self.connection=nil;self.pendingWire=nil;self.screen.releaseInput();self.setControls(false)
                     self.screen.frameImage=nil;self.empty.isHidden=false
                     self.state = retry ? .waiting : .idle
                     self.status.stringValue=error.localizedDescription
@@ -218,8 +368,8 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard let provider=CGDataProvider(data:frame.pixels as CFData),let image=CGImage(width:frame.width,height:frame.height,bitsPerComponent:8,bitsPerPixel:32,bytesPerRow:frame.width*4,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGBitmapInfo(rawValue:CGImageAlphaInfo.noneSkipLast.rawValue),provider:provider,decode:nil,shouldInterpolate:true,intent:.defaultIntent) else{return}
             let first=self.state != .connected
             self.connection=rfb;self.wantsReconnect=true;self.state = .connected;self.screen.frameImage=image;self.empty.isHidden=true;self.setControls(true);self.connectButton.title="Disconnect"
-            self.subtitle.stringValue="USB · \(frame.width) × \(frame.height) · \(isDirect ? "Direct video" : "Veency")";self.status.stringValue="Click to tap. Drag to swipe. Click the screen to type."
-            if first {self.window.makeFirstResponder(self.screen);if self.audioButton.state == .on {self.startAudio()};if self.fastButton.state == .on {self.startVideo()}}
+            self.subtitle.stringValue="USB · \(frame.width) × \(frame.height) · \(isDirect ? "Direct video" : "Veency")";if first {self.status.stringValue="Click to tap. Drag or two-finger swipe to scroll. ⌥-drag or pinch on the trackpad for two fingers. Click the screen to type."}
+            if first {self.startTouch();self.window.makeFirstResponder(self.screen);if self.audioButton.state == .on {self.startAudio()};if self.fastButton.state == .on {self.startVideo()}}
         }
     }
     func setControls(_ enabled:Bool) {audioButton.isEnabled=enabled;fastButton.isEnabled=enabled;for b in [home,lockButton,screenshotButton] {b.isEnabled=enabled}}
@@ -246,6 +396,13 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
         video.start(device:device)
     }
     func stopVideo() {videoGeneration=UUID();directVideo?.stop();directVideo=nil}
+    func startTouch() {
+        stopTouch();guard let device=found.first(where:{$0.serial==selectedSerial}) else{return}
+        let channel=TouchChannel(device:device),session=generation;touch=channel
+        channel.onStatus={ [weak self,weak channel] message in DispatchQueue.main.async {guard let self=self,let channel=channel,self.generation==session,self.touch === channel else{return};self.status.stringValue=message} }
+        screen.multitouchEnabled=true
+    }
+    func stopTouch() {screen.multitouchEnabled=false;touch?.stop();touch=nil}
     @objc func toggleAudio() {if audioButton.state == .on {startAudio()} else {stopAudio()}}
     func startAudio() {
         stopAudio();guard let device=found.first(where:{$0.serial==selectedSerial}) else{return}
@@ -255,8 +412,7 @@ final class MirrorApp: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func stopAudio() {audioGeneration=UUID();audio?.stop();audio=nil;audioStatus.stringValue="Audio off"}
     func stop() {
-        stopAudio();stopVideo()
-        screen.releaseInput();wantsReconnect=false;generation=UUID();reconnectTimer?.invalidate();reconnectTimer=nil;pendingWire?.cancel();connection?.wire.cancel();pendingWire=nil;connection=nil
+        screen.releaseInput();stopAudio();stopVideo();stopTouch();wantsReconnect=false;generation=UUID();reconnectTimer?.invalidate();reconnectTimer=nil;pendingWire?.cancel();connection?.wire.cancel();pendingWire=nil;connection=nil
         state = .idle;screen.frameImage=nil;empty.isHidden=false;setControls(false);connectButton.title="Connect";connectButton.isEnabled = !found.isEmpty;devices.isEnabled=true;password.isEnabled=true
         subtitle.stringValue="Your familiar little screen, on your Mac.";status.stringValue="Disconnected. Your apps and data stay on the iPod."
     }

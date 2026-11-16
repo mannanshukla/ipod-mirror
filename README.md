@@ -7,7 +7,8 @@ A native macOS USB viewer for a jailbroken iPod running Veency, with a minimal f
 Open `build/iPod Mirror.app`. Plug in the iPod, enable Veency in its Settings, unlock the screen, open Connection settings and select its USB identifier, and click Connect. Accept Veency's access request on the iPod if shown. If Veency has a password, enter it in the Mac app. The password is kept in memory only.
 
 - The compact glass bar keeps Home, Lock, Screenshot, Audio, and Settings within reach. Connection settings is also available with Command-comma.
-- Click to tap; drag to swipe.
+- Click to tap; drag, or swipe with two fingers on the trackpad, to scroll and switch home screens.
+- Two fingers (needs the touch helper below): pinch or rotate on a trackpad over the screen, or hold Option and drag to pinch with a second finger mirrored through the screen centre, as in Xcode's Simulator. Option-Shift-drag moves both fingers together. Dots show where the fingers land.
 - Click the screen, then type. Return, Backspace, Tab, Escape and arrow keys are supported. Unicode text depends on the device's Veency build; IME composition is not implemented.
 - Home (Command-1) and Lock (Command-L) use Veency's documented mouse button mappings.
 - Save a full-resolution PNG with Screenshot (Command-S).
@@ -39,7 +40,7 @@ The Mac app itself does not install anything on the iPod. Optional helper instal
 - Live 640 × 960 screen, taps, Home, swipe-to-Spotlight, and Mac keyboard input verified on iPod touch 4 / iOS 5.1.1. Disconnect and reconnect also verified after accepting Veency’s device-side access prompt. Automatic recovery after a physical cable unplug has not yet been tested.
 - Veency remains required. It may need the iPod awake and an access prompt accepted.
 - Raw screen updates favor compatibility over compression; actual frame rate depends on the iPod and Veency.
-- No notification forwarding, clipboard sync, multitouch, or screen-off mirroring.
+- No notification forwarding, clipboard sync, or screen-off mirroring. Multitouch covers two-finger gestures from the Mac; it does not forward raw trackpad fingers, and it needs the touch helper.
 - Optional audio is experimental and does not mute the iPod speaker or provide timestamp-based audio/video synchronization.
 - No claim of memory-leak-free operation; protocol cancellation and closure ownership are checked, but Instruments testing remains pending.
 
@@ -49,13 +50,15 @@ The Mac app itself does not install anything on the iPod. Optional helper instal
 - [Veency controls and setup](https://cydia.saurik.com/info/veency/)
 - [libusbmuxd](https://github.com/libimobiledevice/libusbmuxd) for the USB service protocol
 
-## Optional audio and direct video
+## Optional audio, direct video and multitouch
 
 Audio plays the iPod output mix on the Mac over USB. Startup buffering and TCP_NODELAY avoid the choppy playback observed in the first prototype. Music playback was confirmed smooth on the test device. Audio is enabled explicitly with the speaker control.
 
 Connection settings also offers experimental direct video: a 320 × 480 screen stream, measured around 11–12 fps on our iPod touch 4. Veency still handles input. This is not a comparative performance guarantee. Leave it disabled for full-resolution Veency video.
 
-These features need the device helpers and a jailbroken iPod with MobileSubstrate and SSH. Only iPod touch 4 on iOS 5.1.1 has been tested. Helpers listen on device loopback ports 5902/5903, reached through USB. The audio helper taps the output mixer in mediaserverd; it does not create a microphone capture session.
+Two-finger input travels over a separate helper because Veency's pointer carries one finger. The helper runs inside SpringBoard and builds touch events the same way Veency does on iOS 5, with one path per finger. Pinch-to-zoom in and out of a photo in Photos was verified on iPod touch 4 / iOS 5.1.1. It is limited to iOS 4–5 (before backboardd); on other systems it stays inactive.
+
+These features need the device helpers and a jailbroken iPod with MobileSubstrate and SSH. Only iPod touch 4 on iOS 5.1.1 has been tested. Helpers listen on device loopback ports 5902/5903/5904, reached through USB. The audio helper taps the output mixer in mediaserverd; it does not create a microphone capture session.
 
 Download the helper ZIP from Releases and extract it, preserving its folders. With an SSH tunnel on local port 2222, run:
 
@@ -63,7 +66,7 @@ Download the helper ZIP from Releases and extract it, preserving its folders. Wi
 ./Device/install.sh
 ```
 
-The installer uses your existing SSH authentication and never stores a password. Set IPOD_SSH_HOST and IPOD_SSH_PORT for a different connection. Restart the iPod after first installation to load the audio hook. To remove only these helpers, run `./Device/uninstall.sh`, then restart. Neither script removes your apps or their data.
+The installer uses your existing SSH authentication and never stores a password. Set IPOD_SSH_HOST and IPOD_SSH_PORT for a different connection. Restart the iPod after first installation to load the audio and touch hooks. To remove only these helpers, run `./Device/uninstall.sh`, then restart. Neither script removes your apps or their data.
 
 To build helpers from source, set IPOD_SDK to your local iPhoneOS 4.3 SDK and run `./Device/build.sh`; clang and ldid are required. The SDK is not redistributed.
 
